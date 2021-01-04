@@ -16,6 +16,7 @@ builds:
       - '-s -w -X "main.version={{ .RawVersion }}" -X "main.prerelease={{ if .IsSnapshot }}snapshot.{{ .ShortCommit }}{{ else }}{{ .Prerelease }}{{ end }}"'
     targets:
       - darwin_amd64
+      - darwin_arm64
       - windows_386
       - windows_amd64
     hooks:
