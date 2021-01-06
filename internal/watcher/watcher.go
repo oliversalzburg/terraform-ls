@@ -17,6 +17,8 @@ type watcher struct {
 	changeHooks  []ChangeHook
 	logger       *log.Logger
 
+	nonExistingTrackedFiles interface{}
+
 	watching   bool
 	cancelFunc context.CancelFunc
 }
@@ -60,6 +62,7 @@ func (w *watcher) AddPath(path string) error {
 	}
 	w.trackedFiles[path] = tf
 
+	// TODO: if not exists, check if parent dir exists and track that
 	return w.fw.Add(path)
 }
 
@@ -75,8 +78,8 @@ func (w *watcher) run(ctx context.Context) {
 				return
 			}
 
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				w.logger.Printf("detected write into %s", event.Name)
+			if isCreateOrWrite(event.Op) {
+				w.logger.Printf("detected change of %s", event.Name)
 				oldTf := w.trackedFiles[event.Name]
 				newTf, err := trackedFileFromPath(event.Name)
 				if err != nil {
@@ -101,6 +104,11 @@ func (w *watcher) run(ctx context.Context) {
 			w.logger.Println("watch error:", err)
 		}
 	}
+}
+
+func isCreateOrWrite(op fsnotify.Op) bool {
+	return op&fsnotify.Create == fsnotify.Create ||
+		op&fsnotify.Write == fsnotify.Write
 }
 
 // StartWatching starts to watch for changes that were added

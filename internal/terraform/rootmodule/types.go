@@ -77,6 +77,7 @@ type RootModule interface {
 	ExecuteTerraformValidate(ctx context.Context) (map[string]hcl.Diagnostics, error)
 	HumanReadablePath(string) string
 	WasInitialized() (bool, error)
+	HasOpenFiles() bool
 
 	ParseInstalledModules() error
 	InstalledModules() []datadir.ModuleRecord

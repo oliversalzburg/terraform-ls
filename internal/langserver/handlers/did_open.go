@@ -13,11 +13,11 @@ import (
 	"github.com/hashicorp/terraform-ls/internal/langserver/handlers/command"
 	ilsp "github.com/hashicorp/terraform-ls/internal/lsp"
 	lsp "github.com/hashicorp/terraform-ls/internal/protocol"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/rootmodule"
 )
 
 func (lh *logHandler) TextDocumentDidOpen(ctx context.Context, params lsp.DidOpenTextDocumentParams) error {
-
 	fs, err := lsctx.DocumentStorage(ctx)
 	if err != nil {
 		return err
@@ -39,6 +39,11 @@ func (lh *logHandler) TextDocumentDidOpen(ctx context.Context, params lsp.DidOpe
 		return err
 	}
 
+	watcher, err := lsctx.Watcher(ctx)
+	if err != nil {
+		return err
+	}
+
 	rootDir, _ := lsctx.RootDirectory(ctx)
 	readableDir := humanReadablePath(rootDir, f.Dir())
 
@@ -48,6 +53,11 @@ func (lh *logHandler) TextDocumentDidOpen(ctx context.Context, params lsp.DidOpe
 	if err != nil {
 		if rootmodule.IsRootModuleNotFound(err) {
 			rm, err = rmm.AddAndStartLoadingRootModule(ctx, f.Dir())
+			if err != nil {
+				return err
+			}
+			paths := datadir.PathsToWatch(rm.Path())
+			err := watcher.AddPaths(paths)
 			if err != nil {
 				return err
 			}
