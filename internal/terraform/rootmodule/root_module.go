@@ -21,6 +21,7 @@ import (
 	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/hashicorp/terraform-ls/internal/filesystem"
 	"github.com/hashicorp/terraform-ls/internal/schemas"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/discovery"
 	"github.com/hashicorp/terraform-ls/internal/terraform/exec"
 	tfschema "github.com/hashicorp/terraform-schema/schema"
@@ -39,13 +40,11 @@ type rootModule struct {
 	loadErrMu     *sync.RWMutex
 
 	// module cache
-	moduleMu           *sync.RWMutex
-	moduleManifestFile File
-	moduleManifest     *moduleManifest
+	moduleMu       *sync.RWMutex
+	moduleManifest *datadir.ModuleManifest
 
 	// plugin (provider schema) cache
 	pluginMu         *sync.RWMutex
-	pluginLockFile   File
 	providerSchema   *tfjson.ProviderSchemas
 	providerSchemaMu *sync.RWMutex
 	providerVersions map[string]*version.Version
@@ -108,7 +107,7 @@ func NewRootModule(ctx context.Context, fs filesystem.Filesystem, dir string) (R
 
 	rm.tfNewExecutor = exec.NewExecutor
 
-	err := rm.discoverCaches(ctx, dir)
+	err := rm.parseDataDir()
 	if err != nil {
 		return rm, err
 	}
@@ -116,23 +115,12 @@ func NewRootModule(ctx context.Context, fs filesystem.Filesystem, dir string) (R
 	return rm, rm.load(ctx)
 }
 
-func (rm *rootModule) discoverCaches(ctx context.Context, dir string) error {
-	var errs *multierror.Error
-	err := rm.discoverPluginCache(dir)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-	}
-
-	err = rm.discoverModuleCache(dir)
-	if err != nil {
-		errs = multierror.Append(errs, err)
-	}
-
-	return errs.ErrorOrNil()
+func (rm *rootModule) parseDataDir() error {
+	return rm.ParseInstalledModules()
 }
 
 func (rm *rootModule) WasInitialized() (bool, error) {
-	tfDirPath := filepath.Join(rm.Path(), ".terraform")
+	tfDirPath := filepath.Join(rm.Path(), datadir.DirName)
 
 	f, err := rm.filesystem.Open(tfDirPath)
 	if err != nil {
@@ -148,51 +136,6 @@ func (rm *rootModule) WasInitialized() (bool, error) {
 	}
 
 	return true, nil
-}
-
-func (rm *rootModule) discoverPluginCache(dir string) error {
-	rm.pluginMu.Lock()
-	defer rm.pluginMu.Unlock()
-
-	lockPaths := pluginLockFilePaths(dir)
-	lf, err := findFile(lockPaths)
-	if err != nil {
-		if os.IsNotExist(err) {
-			rm.logger.Printf("no plugin cache found: %s", err.Error())
-			return nil
-		}
-
-		return fmt.Errorf("unable to calculate hash: %w", err)
-	}
-	rm.pluginLockFile = lf
-	return nil
-}
-
-func (rm *rootModule) discoverModuleCache(dir string) error {
-	rm.moduleMu.Lock()
-	defer rm.moduleMu.Unlock()
-
-	lf, err := newFile(moduleManifestFilePath(dir))
-	if err != nil {
-		if os.IsNotExist(err) {
-			rm.logger.Printf("no module manifest file found: %s", err.Error())
-			return nil
-		}
-
-		return fmt.Errorf("unable to calculate hash: %w", err)
-	}
-	rm.moduleManifestFile = lf
-	return nil
-}
-
-func (rm *rootModule) Modules() []ModuleRecord {
-	rm.moduleMu.Lock()
-	defer rm.moduleMu.Unlock()
-	if rm.moduleManifest == nil {
-		return []ModuleRecord{}
-	}
-
-	return rm.moduleManifest.Records
 }
 
 func (rm *rootModule) SetLogger(logger *log.Logger) {
@@ -234,10 +177,7 @@ func (rm *rootModule) load(ctx context.Context) error {
 	// The following operations have to happen in a particular order
 	// as they depend on the internal state as mutated by each operation
 
-	err := rm.UpdateModuleManifest(rm.moduleManifestFile)
-	errs = multierror.Append(errs, err)
-
-	err = rm.discoverTerraformExecutor(ctx)
+	err := rm.discoverTerraformExecutor(ctx)
 	rm.tfDiscoErr = err
 	errs = multierror.Append(errs, err)
 
@@ -251,7 +191,7 @@ func (rm *rootModule) load(ctx context.Context) error {
 			rm.Path(), err)
 	}
 
-	err = rm.UpdateProviderSchemaCache(ctx, rm.pluginLockFile)
+	err = rm.UpdateProviderSchemaCache(ctx)
 	errs = multierror.Append(errs, err)
 
 	rm.logger.Printf("loading of root module %s finished: %s",
@@ -346,7 +286,7 @@ func (rm *rootModule) ExecuteTerraformValidate(ctx context.Context) (map[string]
 			continue
 		}
 
-		absPath := filepath.Join(rm.moduleManifest.rootDir, m.Dir)
+		absPath := filepath.Join(rm.moduleManifest.RootDir(), m.Dir)
 		infos, err := rm.filesystem.ReadDir(absPath)
 		if err != nil {
 			return diagsMap, fmt.Errorf("failed to read module at %q: %w", absPath, err)
@@ -487,19 +427,16 @@ func (rm *rootModule) HumanReadablePath(rootDir string) string {
 	return relDir
 }
 
-func (rm *rootModule) UpdateModuleManifest(lockFile File) error {
+func (rm *rootModule) ParseInstalledModules() error {
 	rm.moduleMu.Lock()
 	defer rm.moduleMu.Unlock()
 
-	if lockFile == nil {
-		rm.logger.Printf("ignoring module update as no lock file was found for %s", rm.Path())
-		return nil
-	}
-
-	rm.moduleManifestFile = lockFile
-
-	mm, err := ParseModuleManifestFromFile(lockFile.Path())
+	mm, err := datadir.ParseInstalledModules(rm.filesystem, rm.Path())
 	if err != nil {
+		if os.IsNotExist(err) {
+			rm.logger.Printf("no module manifest for %s", rm.Path())
+			return nil
+		}
 		return fmt.Errorf("failed to update module manifest: %w", err)
 	}
 
@@ -664,26 +601,12 @@ func IsIgnoredFile(name string) bool {
 func (rm *rootModule) ReferencesModulePath(path string) bool {
 	rm.moduleMu.Lock()
 	defer rm.moduleMu.Unlock()
+
 	if rm.moduleManifest == nil {
 		return false
 	}
 
-	for _, m := range rm.moduleManifest.Records {
-		if m.IsRoot() {
-			// skip root module, as that's tracked separately
-			continue
-		}
-		if m.IsExternal() {
-			// skip external modules as these shouldn't be modified from cache
-			continue
-		}
-		absPath := filepath.Join(rm.moduleManifest.rootDir, m.Dir)
-		if pathEquals(absPath, path) {
-			return true
-		}
-	}
-
-	return false
+	return rm.moduleManifest.ReferencesModule(path)
 }
 
 func (rm *rootModule) TerraformFormatter() (exec.Formatter, error) {
@@ -714,21 +637,13 @@ func (rm *rootModule) IsTerraformAvailable() bool {
 	return rm.HasTerraformDiscoveryFinished() && rm.tfExec != nil
 }
 
-func (rm *rootModule) UpdateProviderSchemaCache(ctx context.Context, lockFile File) error {
+func (rm *rootModule) UpdateProviderSchemaCache(ctx context.Context) error {
 	rm.pluginMu.Lock()
 	defer rm.pluginMu.Unlock()
 
 	if !rm.IsTerraformAvailable() {
 		return fmt.Errorf("cannot update provider schema as terraform is unavailable")
 	}
-
-	if lockFile == nil {
-		rm.logger.Printf("ignoring provider schema update as no lock file was provided for %s",
-			rm.Path())
-		return nil
-	}
-
-	rm.pluginLockFile = lockFile
 
 	schemas, err := rm.tfExec.ProviderSchemas(ctx)
 	if err != nil {
@@ -742,41 +657,12 @@ func (rm *rootModule) UpdateProviderSchemaCache(ctx context.Context, lockFile Fi
 	return nil
 }
 
-func (rm *rootModule) PathsToWatch() []string {
-	rm.pluginMu.RLock()
-	rm.moduleMu.RLock()
-	defer rm.moduleMu.RUnlock()
-	defer rm.pluginMu.RUnlock()
-
-	files := make([]string, 0)
-	if rm.pluginLockFile != nil {
-		files = append(files, rm.pluginLockFile.Path())
-	}
-	if rm.moduleManifestFile != nil {
-		files = append(files, rm.moduleManifestFile.Path())
+func (rm *rootModule) InstalledModules() []datadir.ModuleRecord {
+	rm.moduleMu.Lock()
+	defer rm.moduleMu.Unlock()
+	if rm.moduleManifest == nil {
+		return []datadir.ModuleRecord{}
 	}
 
-	return files
-}
-
-func (rm *rootModule) IsKnownModuleManifestFile(path string) bool {
-	rm.moduleMu.RLock()
-	defer rm.moduleMu.RUnlock()
-
-	if rm.moduleManifestFile == nil {
-		return false
-	}
-
-	return pathEquals(rm.moduleManifestFile.Path(), path)
-}
-
-func (rm *rootModule) IsKnownPluginLockFile(path string) bool {
-	rm.pluginMu.RLock()
-	defer rm.pluginMu.RUnlock()
-
-	if rm.pluginLockFile == nil {
-		return false
-	}
-
-	return pathEquals(rm.pluginLockFile.Path(), path)
+	return rm.moduleManifest.Records
 }

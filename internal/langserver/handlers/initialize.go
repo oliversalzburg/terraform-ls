@@ -11,6 +11,7 @@ import (
 	ilsp "github.com/hashicorp/terraform-ls/internal/lsp"
 	lsp "github.com/hashicorp/terraform-ls/internal/protocol"
 	"github.com/hashicorp/terraform-ls/internal/settings"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/mitchellh/go-homedir"
 )
 
@@ -133,7 +134,7 @@ func (lh *logHandler) Initialize(ctx context.Context, params lsp.InitializeParam
 				return serverCaps, err
 			}
 
-			paths := rm.PathsToWatch()
+			paths := datadir.PathsToWatch(rm.Path())
 			lh.logger.Printf("Adding %d paths of root module for watching (%s)", len(paths), rmPath)
 			err = w.AddPaths(paths)
 			if err != nil {
@@ -171,7 +172,7 @@ func (lh *logHandler) Initialize(ctx context.Context, params lsp.InitializeParam
 			return err
 		}
 
-		paths := rm.PathsToWatch()
+		paths := datadir.PathsToWatch(rm.Path())
 		lh.logger.Printf("Adding %d paths of root module for watching (%s)", len(paths), dir)
 		err = w.AddPaths(paths)
 		if err != nil {

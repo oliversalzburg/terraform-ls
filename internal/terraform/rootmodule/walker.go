@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 )
 
 var (
@@ -22,6 +24,8 @@ var (
 		"terraform.tfstate.d": true,
 	}
 )
+
+type WalkerFactory func() *Walker
 
 type Walker struct {
 	logger *log.Logger
@@ -138,7 +142,7 @@ func (w *Walker) walk(ctx context.Context, rootPath string, wf WalkFunc) error {
 			return filepath.SkipDir
 		}
 
-		if info.Name() == ".terraform" {
+		if info.Name() == datadir.DirName {
 			w.logger.Printf("found root module %s", dir)
 			return wf(ctx, dir)
 		}

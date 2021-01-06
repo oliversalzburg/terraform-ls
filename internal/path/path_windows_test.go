@@ -1,4 +1,4 @@
-package rootmodule
+package path
 
 import (
 	"fmt"

@@ -16,6 +16,7 @@ import (
 	ictx "github.com/hashicorp/terraform-ls/internal/context"
 	"github.com/hashicorp/terraform-ls/internal/filesystem"
 	"github.com/hashicorp/terraform-ls/internal/logging"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/rootmodule"
 	"github.com/mitchellh/cli"
 )
@@ -123,7 +124,7 @@ func (c *InspectModuleCommand) inspect(rootPath string) error {
 		}
 		errs.ErrorFormat = formatErrors
 
-		modules := formatModuleRecords(rm.Modules())
+		modules := formatModuleRecords(rm.InstalledModules())
 		subModules := fmt.Sprintf("%d modules", len(modules))
 		if len(modules) > 0 {
 			subModules += "\n"
@@ -153,7 +154,7 @@ func formatErrors(errors []error) string {
 	return strings.TrimSpace(out)
 }
 
-func formatModuleRecords(mds []rootmodule.ModuleRecord) []string {
+func formatModuleRecords(mds []datadir.ModuleRecord) []string {
 	out := make([]string, 0)
 	for _, m := range mds {
 		if m.IsRoot() {

@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-ls/internal/langserver/progress"
 	ilsp "github.com/hashicorp/terraform-ls/internal/lsp"
 	lsp "github.com/hashicorp/terraform-ls/internal/protocol"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 )
 
 func TerraformInitHandler(ctx context.Context, args cmd.CommandArgs) (interface{}, error) {
@@ -42,7 +43,7 @@ func TerraformInitHandler(ctx context.Context, args cmd.CommandArgs) (interface{
 	}
 
 	progress.Report(ctx, "Detecting paths to watch ...")
-	paths := rm.PathsToWatch()
+	paths := datadir.PathsToWatch(rm.Path())
 
 	w, err := lsctx.Watcher(ctx)
 	if err != nil {

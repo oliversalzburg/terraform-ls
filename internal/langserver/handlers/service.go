@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-ls/internal/langserver/session"
 	lsp "github.com/hashicorp/terraform-ls/internal/protocol"
 	"github.com/hashicorp/terraform-ls/internal/settings"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/rootmodule"
 	"github.com/hashicorp/terraform-ls/internal/watcher"
 )
@@ -116,9 +117,9 @@ func (svc *service) Assigner() (jrpc2.Assigner, error) {
 		if err != nil {
 			return err
 		}
-		if rm.IsKnownPluginLockFile(file.Path()) {
+		if datadir.IsPluginLockFile(rm.Path(), file.Path()) {
 			svc.logger.Printf("detected plugin cache change, updating schema ...")
-			err := rm.UpdateProviderSchemaCache(ctx, file)
+			err := rm.UpdateProviderSchemaCache(ctx)
 			if err != nil {
 				svc.logger.Printf(err.Error())
 			}
@@ -131,9 +132,9 @@ func (svc *service) Assigner() (jrpc2.Assigner, error) {
 		if err != nil {
 			return err
 		}
-		if rm.IsKnownModuleManifestFile(file.Path()) {
+		if datadir.IsModuleManifestFile(rm.Path(), file.Path()) {
 			svc.logger.Printf("detected module manifest change, updating ...")
-			err := rm.UpdateModuleManifest(file)
+			err := rm.ParseInstalledModules()
 			if err != nil {
 				svc.logger.Printf(err.Error())
 			}

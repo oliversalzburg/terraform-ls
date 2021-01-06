@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/gammazero/workerpool"
 	"github.com/hashicorp/hcl-lang/schema"
 	"github.com/hashicorp/terraform-ls/internal/filesystem"
+	"github.com/hashicorp/terraform-ls/internal/path"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/discovery"
 	"github.com/hashicorp/terraform-ls/internal/terraform/exec"
 )
@@ -79,7 +79,7 @@ func (rmm *rootModuleManager) defaultRootModuleFactory(ctx context.Context, dir 
 	rm.tfExecTimeout = rmm.tfExecTimeout
 	rm.tfExecLogPath = rmm.tfExecLogPath
 
-	return rm, rm.discoverCaches(ctx, dir)
+	return rm, rm.parseDataDir()
 }
 
 func (rmm *rootModuleManager) SetTerraformExecPath(path string) {
@@ -109,8 +109,12 @@ func (rmm *rootModuleManager) InitAndUpdateRootModule(ctx context.Context, dir s
 	}
 
 	rootModule := rm.(*rootModule)
-	rootModule.discoverCaches(ctx, dir)
-	return rm, rootModule.UpdateProviderSchemaCache(ctx, rootModule.pluginLockFile)
+	err = rootModule.parseDataDir()
+	if err != nil {
+		return rm, err
+	}
+
+	return rm, rm.UpdateProviderSchemaCache(ctx)
 }
 
 func (rmm *rootModuleManager) AddAndStartLoadingRootModule(ctx context.Context, dir string) (RootModule, error) {
@@ -168,7 +172,7 @@ func (rmm *rootModuleManager) SchemaForPath(path string) (*schema.BodySchema, er
 
 func (rmm *rootModuleManager) rootModuleByPath(dir string) (*rootModule, bool) {
 	for _, rm := range rmm.rms {
-		if pathEquals(rm.Path(), dir) {
+		if path.Equals(rm.Path(), dir) {
 			return rm, true
 		}
 	}
@@ -192,7 +196,7 @@ func (rmm *rootModuleManager) RootModuleCandidatesByPath(path string) RootModule
 	}
 
 	if !foundPath {
-		dir := trimLockFilePath(path)
+		dir := datadir.TrimLockFilePath(path)
 		rm, ok := rmm.rootModuleByPath(dir)
 		if ok {
 			inited, _ := rm.WasInitialized()
@@ -225,7 +229,7 @@ func (rmm *rootModuleManager) RootModuleByPath(path string) (RootModule, error) 
 		return rm, nil
 	}
 
-	dir := trimLockFilePath(path)
+	dir := datadir.TrimLockFilePath(path)
 
 	if rm, ok := rmm.rootModuleByPath(dir); ok {
 		return rm, nil
@@ -314,35 +318,6 @@ func (rmm *rootModuleManager) CancelLoading() {
 		rmm.logger.Printf("loading cancelled for %s", rm.Path())
 	}
 	rmm.workerPool.Stop()
-}
-
-// rootModuleDirFromPath strips known lock file paths and filenames
-// to get the directory path of the relevant rootModule
-func trimLockFilePath(filePath string) string {
-	pluginLockFileSuffixes := pluginLockFilePaths(string(os.PathSeparator))
-	for _, s := range pluginLockFileSuffixes {
-		if strings.HasSuffix(filePath, s) {
-			return strings.TrimSuffix(filePath, s)
-		}
-	}
-
-	moduleManifestSuffix := moduleManifestFilePath(string(os.PathSeparator))
-	if strings.HasSuffix(filePath, moduleManifestSuffix) {
-		return strings.TrimSuffix(filePath, moduleManifestSuffix)
-	}
-
-	return filePath
-}
-
-func (rmm *rootModuleManager) PathsToWatch() []string {
-	paths := make([]string, 0)
-	for _, rm := range rmm.rms {
-		ptw := rm.PathsToWatch()
-		if len(ptw) > 0 {
-			paths = append(paths, ptw...)
-		}
-	}
-	return paths
 }
 
 // NewRootModuleLoader allows adding & loading root modules

@@ -82,6 +82,17 @@ func TestLangServer_workspaceExecuteCommand_init_basic(t *testing.T) {
 			},
 		},
 		{
+			Method:        "ProviderSchemas",
+			Repeatability: 1,
+			Arguments: []interface{}{
+				mock.AnythingOfType(""),
+			},
+			ReturnArguments: []interface{}{
+				nil,
+				nil,
+			},
+		},
+		{
 			Method:        "Init",
 			Repeatability: 1,
 			Arguments: []interface{}{
@@ -159,6 +170,17 @@ func TestLangServer_workspaceExecuteCommand_init_error(t *testing.T) {
 			Repeatability: 1,
 			ReturnArguments: []interface{}{
 				"",
+			},
+		},
+		{
+			Method:        "ProviderSchemas",
+			Repeatability: 1,
+			Arguments: []interface{}{
+				mock.AnythingOfType(""),
+			},
+			ReturnArguments: []interface{}{
+				nil,
+				nil,
 			},
 		},
 		{

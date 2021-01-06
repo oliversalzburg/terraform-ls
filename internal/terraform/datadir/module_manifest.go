@@ -1,21 +1,27 @@
-package rootmodule
+package datadir
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"path/filepath"
 	"strings"
 
 	version "github.com/hashicorp/go-version"
+	"github.com/hashicorp/terraform-ls/internal/filesystem"
+	"github.com/hashicorp/terraform-ls/internal/path"
 )
 
-func moduleManifestFilePath(dir string) string {
+func ModuleManifestFilePath(modulePath string) string {
 	return filepath.Join(
-		dir,
-		".terraform",
+		modulePath,
+		DirName,
 		"modules",
 		"modules.json")
+}
+
+func IsModuleManifestFile(modulePath, givenPath string) bool {
+	manifestPath := ModuleManifestFilePath(modulePath)
+	return path.Equals(manifestPath, givenPath)
 }
 
 // The following structs were copied from terraform's
@@ -90,34 +96,71 @@ func (r *ModuleRecord) IsExternal() bool {
 	return false
 }
 
-// moduleManifest is an internal struct used only to assist in our JSON
+// ModuleManifest is an internal struct used only to assist in our JSON
 // serialization of manifest snapshots. It should not be used for any other
 // purpose.
-type moduleManifest struct {
+type ModuleManifest struct {
 	rootDir string
 	Records []ModuleRecord `json:"Modules"`
 }
 
-func ParseModuleManifestFromFile(path string) (*moduleManifest, error) {
-	b, err := ioutil.ReadFile(path)
+func (mm *ModuleManifest) RootDir() string {
+	return mm.rootDir
+}
+
+func (mm *ModuleManifest) ReferencesModule(modPath string) bool {
+	for _, m := range mm.Records {
+		if m.IsRoot() {
+			// skip root module, as that's tracked separately
+			continue
+		}
+		if m.IsExternal() {
+			// skip external modules as these shouldn't be modified from cache
+			continue
+		}
+		absPath := filepath.Join(mm.RootDir(), m.Dir)
+		if path.Equals(absPath, modPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func ParseInstalledModules(fs filesystem.Filesystem, modulePath string) (*ModuleManifest, error) {
+	manifestPath := ModuleManifestFilePath(modulePath)
+	return parseModuleManifestFromFile(fs, manifestPath)
+}
+
+func parseModuleManifestFromFile(fs filesystem.Filesystem, path string) (*ModuleManifest, error) {
+	b, err := fs.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+	if len(b) == 0 {
+		// mimic Terraform's own behavior by treating empty file
+		// as if it was empty JSON object
+		b = []byte("{}")
 	}
 
 	mm, err := parseModuleManifest(b)
 	if err != nil {
 		return nil, err
 	}
-	mm.rootDir = trimLockFilePath(path)
+
+	mm.rootDir = TrimLockFilePath(path)
 
 	return mm, nil
 }
 
-func parseModuleManifest(b []byte) (*moduleManifest, error) {
-	mm := moduleManifest{}
+func parseModuleManifest(b []byte) (*ModuleManifest, error) {
+	mm := ModuleManifest{}
 	err := json.Unmarshal(b, &mm)
 	if err != nil {
 		return nil, err
+	}
+
+	if mm.Records == nil {
+		mm.Records = make([]ModuleRecord, 0)
 	}
 
 	return &mm, nil

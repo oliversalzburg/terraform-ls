@@ -58,6 +58,17 @@ func TestLangServer_formatting_basic(t *testing.T) {
 						},
 					},
 					{
+						Method:        "ProviderSchemas",
+						Repeatability: 1,
+						Arguments: []interface{}{
+							mock.AnythingOfType(""),
+						},
+						ReturnArguments: []interface{}{
+							nil,
+							nil,
+						},
+					},
+					{
 						Method:        "Format",
 						Repeatability: 1,
 						Arguments: []interface{}{
@@ -141,6 +152,17 @@ func TestLangServer_formatting_oldVersion(t *testing.T) {
 						Repeatability: 1,
 						ReturnArguments: []interface{}{
 							"",
+						},
+					},
+					{
+						Method:        "ProviderSchemas",
+						Repeatability: 1,
+						Arguments: []interface{}{
+							mock.AnythingOfType(""),
+						},
+						ReturnArguments: []interface{}{
+							nil,
+							nil,
 						},
 					},
 					{

@@ -9,12 +9,9 @@ import (
 	"github.com/hashicorp/hcl-lang/schema"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/terraform-ls/internal/filesystem"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/exec"
 )
-
-type File interface {
-	Path() string
-}
 
 type TerraformFormatterFinder interface {
 	TerraformFormatterForDir(ctx context.Context, path string) (exec.Formatter, error)
@@ -45,7 +42,6 @@ type RootModuleManager interface {
 	WorkerPoolSize() int
 	WorkerQueueSize() int
 	ListRootModules() RootModules
-	PathsToWatch() []string
 	CancelLoading()
 }
 
@@ -66,12 +62,8 @@ type RootModule interface {
 	StartLoading() error
 	IsLoadingDone() bool
 	LoadingDone() <-chan struct{}
-	IsKnownPluginLockFile(path string) bool
-	IsKnownModuleManifestFile(path string) bool
-	PathsToWatch() []string
-	UpdateProviderSchemaCache(ctx context.Context, lockFile File) error
+	UpdateProviderSchemaCache(ctx context.Context) error
 	IsProviderSchemaLoaded() bool
-	UpdateModuleManifest(manifestFile File) error
 	Decoder() (*decoder.Decoder, error)
 	DecoderWithSchema(*schema.BodySchema) (*decoder.Decoder, error)
 	MergedSchema() (*schema.BodySchema, error)
@@ -83,13 +75,13 @@ type RootModule interface {
 	IsTerraformAvailable() bool
 	ExecuteTerraformInit(ctx context.Context) error
 	ExecuteTerraformValidate(ctx context.Context) (map[string]hcl.Diagnostics, error)
-	Modules() []ModuleRecord
 	HumanReadablePath(string) string
 	WasInitialized() (bool, error)
+
+	ParseInstalledModules() error
+	InstalledModules() []datadir.ModuleRecord
 }
 
 type RootModuleFactory func(context.Context, string) (*rootModule, error)
 
 type RootModuleManagerFactory func(filesystem.Filesystem) RootModuleManager
-
-type WalkerFactory func() *Walker

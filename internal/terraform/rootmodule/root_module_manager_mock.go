@@ -24,7 +24,7 @@ func (rmf *RootModuleMockFactory) New(ctx context.Context, dir string) (*rootMod
 
 	mock := NewRootModuleMock(rmm, rmf.fs, dir)
 	mock.SetLogger(rmf.logger)
-	return mock, mock.discoverCaches(ctx, dir)
+	return mock, mock.parseDataDir()
 }
 
 type RootModuleManagerMockInput struct {

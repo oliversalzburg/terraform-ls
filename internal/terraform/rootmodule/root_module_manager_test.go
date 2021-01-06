@@ -525,7 +525,7 @@ func testRootModuleManager(t *testing.T) *rootModuleManager {
 		md := &discovery.MockDiscovery{Path: "tf-mock"}
 		rm.tfDiscoFunc = md.LookPath
 
-		err := rm.discoverCaches(ctx, dir)
+		err := rm.parseDataDir()
 		if err != nil {
 			t.Fatal(err)
 		}
