@@ -530,10 +530,11 @@ func testModuleManager(t *testing.T) *moduleManager {
 			t.Fatal(err)
 		}
 
-		err = mod.load(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// TODO: not sure why we're creating an ad-hoc mock here
+		// err = mod.load(ctx)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
 
 		return mod, nil
 	}

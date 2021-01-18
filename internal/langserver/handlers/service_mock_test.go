@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/terraform-ls/internal/langserver/session"
 	"github.com/hashicorp/terraform-ls/internal/terraform/exec"
 	"github.com/hashicorp/terraform-ls/internal/terraform/module"
-	"github.com/hashicorp/terraform-ls/internal/watcher"
+	"github.com/hashicorp/terraform-ls/internal/terraform/module/watcher"
 )
 
 type MockSessionInput struct {

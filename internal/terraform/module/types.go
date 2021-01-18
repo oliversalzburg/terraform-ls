@@ -3,23 +3,18 @@ package module
 import (
 	"context"
 	"log"
-	"time"
 
-	"github.com/hashicorp/hcl-lang/decoder"
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/hcl-lang/schema"
 	"github.com/hashicorp/hcl/v2"
+	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/hashicorp/terraform-ls/internal/filesystem"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
 	"github.com/hashicorp/terraform-ls/internal/terraform/exec"
 )
 
 type File interface {
 	Path() string
-}
-
-type TerraformFormatterFinder interface {
-	TerraformFormatterForDir(ctx context.Context, path string) (exec.Formatter, error)
-	HasTerraformDiscoveryFinished(path string) (bool, error)
-	IsTerraformAvailable(path string) (bool, error)
 }
 
 type ModuleFinder interface {
@@ -32,20 +27,10 @@ type ModuleLoader func(dir string) (Module, error)
 
 type ModuleManager interface {
 	ModuleFinder
-	TerraformFormatterFinder
 
 	SetLogger(logger *log.Logger)
-
-	SetTerraformExecPath(path string)
-	SetTerraformExecLogPath(logPath string)
-	SetTerraformExecTimeout(timeout time.Duration)
-
-	InitAndUpdateModule(ctx context.Context, dir string) (Module, error)
-	AddAndStartLoadingModule(ctx context.Context, dir string) (Module, error)
-	WorkerPoolSize() int
-	WorkerQueueSize() int
+	AddModuleAtPath(modPath string) error
 	ListModules() Modules
-	PathsToWatch() []string
 	CancelLoading()
 }
 
@@ -61,34 +46,22 @@ func (mods Modules) Paths() []string {
 
 type Module interface {
 	Path() string
-	MatchesPath(path string) bool
-	LoadError() error
-	StartLoading() error
-	IsLoadingDone() bool
-	LoadingDone() <-chan struct{}
-	IsKnownPluginLockFile(path string) bool
-	IsKnownModuleManifestFile(path string) bool
-	PathsToWatch() []string
-	UpdateProviderSchemaCache(ctx context.Context, lockFile File) error
-	IsProviderSchemaLoaded() bool
-	UpdateModuleManifest(manifestFile File) error
-	Decoder() (*decoder.Decoder, error)
-	DecoderWithSchema(*schema.BodySchema) (*decoder.Decoder, error)
-	MergedSchema() (*schema.BodySchema, error)
-	IsParsed() bool
-	ParseFiles() error
-	ParsedDiagnostics() map[string]hcl.Diagnostics
-	TerraformFormatter() (exec.Formatter, error)
-	HasTerraformDiscoveryFinished() bool
-	IsTerraformAvailable() bool
-	ExecuteTerraformInit(ctx context.Context) error
-	ExecuteTerraformValidate(ctx context.Context) (map[string]hcl.Diagnostics, error)
-	Modules() []ModuleRecord
 	HumanReadablePath(string) string
-	WasInitialized() (bool, error)
+	MatchesPath(path string) bool
+	HasOpenFiles() bool
+
+	TerraformExecPath() string
+	TerraformVersion() *version.Version
+	ProviderVersions() map[string]*version.Version
+
+	ProviderSchema() *tfjson.ProviderSchemas
+
+	ParsedFiles() map[string]*hcl.File
+	Diagnostics() map[string]hcl.Diagnostics
+	ModuleCalls() []datadir.ModuleRecord
 }
 
-type ModuleFactory func(context.Context, string) (*module, error)
+type ModuleFactory func(filesystem.Filesystem, string) (*module, error)
 
 type ModuleManagerFactory func(filesystem.Filesystem) ModuleManager
 

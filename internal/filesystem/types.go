@@ -40,6 +40,7 @@ type DocumentStorage interface {
 	GetDocument(DocumentHandler) (Document, error)
 	CloseAndRemoveDocument(DocumentHandler) error
 	ChangeDocument(VersionedDocumentHandler, DocumentChanges) error
+	HasOpenFiles(path string) (bool, error)
 }
 
 type Filesystem interface {

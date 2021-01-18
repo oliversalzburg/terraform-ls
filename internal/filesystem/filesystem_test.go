@@ -478,6 +478,11 @@ func (fh *testHandler) Dir() string {
 func (fh *testHandler) Filename() string {
 	return ""
 }
+
+func (fh *testHandler) IsOpen() bool {
+	return false
+}
+
 func (fh *testHandler) Version() int {
 	return 0
 }

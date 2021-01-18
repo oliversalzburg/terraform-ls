@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"time"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/code"
@@ -18,7 +17,7 @@ import (
 	lsp "github.com/hashicorp/terraform-ls/internal/protocol"
 	"github.com/hashicorp/terraform-ls/internal/settings"
 	"github.com/hashicorp/terraform-ls/internal/terraform/module"
-	"github.com/hashicorp/terraform-ls/internal/watcher"
+	"github.com/hashicorp/terraform-ls/internal/terraform/module/watcher"
 )
 
 type service struct {
@@ -79,18 +78,6 @@ func (svc *service) Assigner() (jrpc2.Assigner, error) {
 
 	svc.modMgr = svc.newModuleManager(svc.fs)
 	svc.modMgr.SetLogger(svc.logger)
-
-	svc.logger.Printf("Worker pool size set to %d", svc.modMgr.WorkerPoolSize())
-
-	tr := newTickReporter(5 * time.Second)
-	tr.AddReporter(func() {
-		queueSize := svc.modMgr.WorkerQueueSize()
-		if queueSize < 1 {
-			return
-		}
-		svc.logger.Printf("Root modules waiting to be loaded: %d", queueSize)
-	})
-	tr.StartReporting(svc.sessCtx)
 
 	svc.walker = svc.newWalker()
 

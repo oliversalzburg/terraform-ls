@@ -9,7 +9,7 @@ import (
 	lsp "github.com/hashicorp/terraform-ls/internal/protocol"
 	"github.com/hashicorp/terraform-ls/internal/settings"
 	"github.com/hashicorp/terraform-ls/internal/terraform/module"
-	"github.com/hashicorp/terraform-ls/internal/watcher"
+	"github.com/hashicorp/terraform-ls/internal/terraform/module/watcher"
 )
 
 type contextKey struct {

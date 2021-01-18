@@ -2,20 +2,24 @@ package watcher
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/hashicorp/terraform-ls/internal/terraform/datadir"
+	"github.com/hashicorp/terraform-ls/internal/terraform/module"
 )
 
 // Watcher is a wrapper around native fsnotify.Watcher
 // It provides the ability to detect actual file changes
 // (rather than just events that may not be changing any bytes)
 type watcher struct {
-	fw           *fsnotify.Watcher
-	trackedFiles map[string]TrackedFile
-	changeHooks  []ChangeHook
-	logger       *log.Logger
+	fw          *fsnotify.Watcher
+	modMgr      module.ModuleManager
+	modulePaths map[string]bool
+	logger      *log.Logger
 
 	watching   bool
 	cancelFunc context.CancelFunc
@@ -23,15 +27,17 @@ type watcher struct {
 
 type WatcherFactory func() (Watcher, error)
 
-func NewWatcher() (Watcher, error) {
+func NewWatcher(modMgr module.ModuleManager) (Watcher, error) {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
+
 	return &watcher{
-		fw:           fw,
-		logger:       defaultLogger,
-		trackedFiles: make(map[string]TrackedFile, 0),
+		fw:          fw,
+		modMgr:      modMgr,
+		logger:      defaultLogger,
+		modulePaths: make(map[string]bool, 0),
 	}, nil
 }
 
@@ -41,30 +47,33 @@ func (w *watcher) SetLogger(logger *log.Logger) {
 	w.logger = logger
 }
 
-func (w *watcher) AddPaths(paths []string) error {
-	for _, p := range paths {
-		err := w.AddPath(p)
+func (w *watcher) AddModule(path string, dir *datadir.DataDir) error {
+	if dir == nil {
+		return fmt.Errorf("%s: no datadir provided for module", path)
+	}
+
+	path = filepath.Clean(path)
+	w.modulePaths[path] = true
+
+	err := w.fw.Add(path)
+	if err != nil {
+		return err
+	}
+
+	if dir.ModuleManifestPath != "" {
+		err := w.fw.Add(dir.ModuleManifestPath)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-func (w *watcher) AddPath(path string) error {
-	w.logger.Printf("adding %s for watching", path)
-
-	tf, err := trackedFileFromPath(path)
-	if err != nil {
-		return err
+	if dir.PluginLockFilePath != "" {
+		err := w.fw.Add(dir.PluginLockFilePath)
+		if err != nil {
+			return err
+		}
 	}
-	w.trackedFiles[path] = tf
 
-	return w.fw.Add(path)
-}
-
-func (w *watcher) AddChangeHook(h ChangeHook) {
-	w.changeHooks = append(w.changeHooks, h)
+	return err
 }
 
 func (w *watcher) run(ctx context.Context) {
@@ -76,23 +85,17 @@ func (w *watcher) run(ctx context.Context) {
 			}
 
 			if event.Op&fsnotify.Write == fsnotify.Write {
-				w.logger.Printf("detected write into %s", event.Name)
-				oldTf := w.trackedFiles[event.Name]
-				newTf, err := trackedFileFromPath(event.Name)
-				if err != nil {
-					w.logger.Println("failed to track file, ignoring", err)
-					continue
-				}
-				w.trackedFiles[event.Name] = newTf
+				// TODO
+				w.modMgr.EnqueueModuleOp(dir, opType)
+			}
 
-				if oldTf.Sha256Sum() != newTf.Sha256Sum() {
-					for _, h := range w.changeHooks {
-						err := h(ctx, newTf)
-						if err != nil {
-							w.logger.Println("change hook error:", err)
-						}
-					}
-				}
+			if event.Op&fsnotify.Create == fsnotify.Create {
+				// TODO
+				w.modMgr.EnqueueModuleOp(dir, opType)
+			}
+
+			if event.Op&fsnotify.Remove == fsnotify.Remove {
+				// TODO: remove module-related individual paths
 			}
 		case err, ok := <-w.fw.Errors:
 			if !ok {
@@ -103,8 +106,6 @@ func (w *watcher) run(ctx context.Context) {
 	}
 }
 
-// StartWatching starts to watch for changes that were added
-// via AddPath(s) until Stop() is called
 func (w *watcher) Start() error {
 	if w.watching {
 		w.logger.Println("watching already in progress")

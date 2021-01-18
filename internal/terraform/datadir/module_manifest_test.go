@@ -1,4 +1,4 @@
-package module
+package datadir
 
 const moduleManifestRecord_external = `{
     "Key": "web_server_sg",
